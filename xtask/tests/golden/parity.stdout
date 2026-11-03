@@ -1,0 +1,31 @@
+**Weighted breadth parity: 99%** over 277 features.
+
+| Priority | Features | Done | Partial | Missing | Parity |
+|---|---|---|---|---|---|
+| P0 | 102 | 100 | 2 | 0 | 99% |
+| P1 | 99 | 99 | 0 | 0 | 100% |
+| P2 | 76 | 72 | 4 | 0 | 97% |
+
+| Area | Parity |
+|---|---|
+| Application shell & workspace | 99% |
+| Documents, pages, spreads | 100% |
+| Layers | 100% |
+| Frames, shapes & paths | 100% |
+| Transform | 100% |
+| Fill, stroke, colour | 100% |
+| Effects & transparency | 100% |
+| Placing & links | 93% |
+| Type & text frames | 99% |
+| Typography | 100% |
+| Styles | 100% |
+| Tables | 100% |
+| Long documents | 100% |
+| Interactivity & digital | 100% |
+| Output & production | 92% |
+| XML & automation | 100% |
+| View & navigation | 100% |
+| Undo, history, saving | 100% |
+| Accessibility | 100% |
+
+Open P0 items: Vector/page formats (PDF/AI/SVG/EPS place), Export to PDF (print).

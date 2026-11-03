@@ -1,0 +1,27 @@
+crate                       files    lines #[test]  proptest!
+--------------------------------------------------------------
+designcraft                    12     4346      89          0
+designcraft-cli                 8     1910      23          0
+designcraft-color              12     3294      49          0
+designcraft-compose            29    24622     407          0
+designcraft-doc                49    16982     159          1
+designcraft-engine            170    70674    1199          0
+designcraft-epub               12     2907      37          0
+designcraft-fonts              23     5522      83          0
+designcraft-format              2     1263      29          0
+designcraft-geom               15     2920      67          0
+designcraft-idml               43    17033     192          0
+designcraft-images             12     3468      68          0
+designcraft-mcp                 8     2570      32          0
+designcraft-pdf                35    10374     142          0
+designcraft-pptx                8     2647      12          0
+designcraft-render             32     7221     105          0
+designcraft-textimport          8     3395      59          0
+designcraft-tools              17    10090     103          0
+designcraft-ui-egui           141   106070     876          0
+designcraft-web                 4      710       6          0
+xtask                           8     1299      33          0
+--------------------------------------------------------------
+TOTAL                         648   299317    3770          1
+
+(#[test] counts source attributes; macro-generated tests count once. Use --exact for harness counts.)

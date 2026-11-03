@@ -1,0 +1,26 @@
+Dependency layering (plan/architecture.md §3)
+
+crate                        layer          workspace deps
+designcraft                  exempt         engine, ui-egui
+designcraft-cli              exempt         color, compose, doc, engine, format, geom, mcp, pdf, render
+designcraft-color            L0             
+designcraft-compose          L2             color, doc, fonts, geom, fonts (dev)
+designcraft-doc              L1             color, geom
+designcraft-engine           L5             color, compose, doc, epub, fonts, format, geom, idml, images, pdf, pptx, render, textimport, tools, fonts (dev)
+designcraft-epub             L3             color, doc
+designcraft-fonts            L1             
+designcraft-format           L3             doc, images
+designcraft-geom             L0             
+designcraft-idml             L3             color, doc, geom, images, compose (dev)
+designcraft-images           L2             color, fonts, fonts (dev)
+designcraft-mcp              L6             engine, geom, render, tools
+designcraft-pdf              L3             color, compose, doc, fonts, geom, images, fonts (dev)
+designcraft-pptx             L3             color, compose, doc, fonts, geom, images, fonts (dev)
+designcraft-render           L3             color, compose, doc, fonts, geom, images
+designcraft-textimport       L3             doc
+designcraft-tools            L4             color, compose, doc, geom
+designcraft-ui-egui          L6             color, compose, doc, engine, fonts, geom, render, tools, fonts (dev), idml (dev)
+designcraft-web              exempt         engine, format, ui-egui
+xtask                        exempt         
+
+OK: 21 crates, no layering violations.

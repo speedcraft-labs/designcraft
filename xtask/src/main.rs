@@ -1,15 +1,10 @@
 //! Workspace tooling: `cargo xtask <command>`.
 //!
-//! Pure Rust (std + serde_json). External tools (`cargo`, `curl`, `tar`) are
+//! Shared native tasks plus app-specific commands. External tools (`cargo`, `curl`, `tar`) are
 //! invoked through `std::process::Command`.
 
 mod assets;
-mod ico;
-mod layers;
-mod parity;
-mod pdf_deps;
-mod stats;
-mod version;
+mod task_policy;
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode, Stdio};
@@ -36,25 +31,27 @@ commands:
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
+    let shared_args: Vec<String> = args.iter().skip(1).cloned().collect();
+    let configs = task_policy::configs(root());
     let rest: Vec<&str> = args.iter().skip(1).map(String::as_str).collect();
     let result = match args.first().map(String::as_str) {
         Some("assets") => assets::run(&root()),
-        Some("layers") => cmd_layers(),
-        Some("pdf-deps") => pdf_deps::run(&root()),
+        Some("layers") => cmd_layers(&configs.layers, &shared_args),
+        Some("pdf-deps") => cmd_pdf_deps(&configs.pdf_deps, &shared_args),
         Some("wasm") => cmd_wasm(),
         Some("test") => cmd_test().and_then(|()| cmd_doctest()),
         Some("i18n-report") => cmd_i18n_report(),
         Some("ci") => cmd_ci(),
         Some("corpus") => cmd_corpus(rest.contains(&"--download")),
-        Some("stats") => stats::run(&root(), rest.contains(&"--exact")),
-        Some("parity") => parity::run(&root()),
-        Some("ico") => ico::run(&rest),
-        Some("version") => version::run(&root(), &rest),
+        Some("stats") => craft_xtask::stats::run(&configs.stats, &shared_args),
+        Some("parity") => cmd_parity(&configs.parity, &shared_args),
+        Some("ico") => craft_xtask::ico::run(&configs.ico, &shared_args),
+        Some("version") => craft_xtask::version::run(&configs.version, &shared_args),
         Some("-h" | "--help" | "help") | None => {
-            print!("{USAGE}");
+            print!("{}", usage());
             Ok(())
         }
-        Some(other) => Err(format!("unknown command `{other}`\n\n{USAGE}")),
+        Some(other) => Err(format!("unknown command `{other}`\n\n{}", usage())),
     };
     match result {
         Ok(()) => ExitCode::SUCCESS,
@@ -63,6 +60,18 @@ fn main() -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+fn usage() -> String {
+    format!(
+        "{USAGE}\nShared task syntax:\n  {}\n  {}\n  {}\n  {}\n  {}\n  {}\n",
+        craft_xtask::version::cli_help(),
+        craft_xtask::stats::cli_help(),
+        craft_xtask::ico::cli_help().replace("ico/icns <out.ico|out.icns>", "ico <out.ico>"),
+        craft_xtask::layers::cli_help(),
+        craft_xtask::parity::cli_help(),
+        craft_xtask::pdf_deps::cli_help()
+    )
 }
 
 /// Workspace root (parent of the xtask crate).
@@ -90,50 +99,65 @@ pub fn metadata() -> Result<serde_json::Value, String> {
     serde_json::from_slice(&out.stdout).map_err(|e| format!("cargo metadata: bad JSON: {e}"))
 }
 
-fn cmd_layers() -> Result<(), String> {
-    let crates = layers::from_metadata(&metadata()?)?;
+fn cmd_layers(config: &craft_xtask::layers::Config, args: &[String]) -> Result<(), String> {
+    let report = craft_xtask::layers::compute(config, &craft_xtask::layers::Args::parse(args)?)?;
     println!("Dependency layering (plan/architecture.md §3)\n");
     println!("{:<28} {:<14} workspace deps", "crate", "layer");
-    for c in &crates {
+    for c in &report.crates {
         let ws: Vec<String> = c
             .deps
             .iter()
             .filter(|d| d.workspace)
             .map(|d| {
                 let k = match d.kind {
-                    layers::DepKind::Normal => "",
-                    layers::DepKind::Dev => " (dev)",
-                    layers::DepKind::Build => " (build)",
+                    craft_xtask::layers::DepKind::Normal => "",
+                    craft_xtask::layers::DepKind::Dev => " (dev)",
+                    craft_xtask::layers::DepKind::Build => " (build)",
                 };
-                format!("{}{k}", layers::short_name(&d.name))
+                format!("{}{k}", task_policy::short_name(&d.name))
             })
             .collect();
-        println!("{:<28} {:<14} {}", c.name, layers::describe(layers::classify(&c.name)), ws.join(", "));
+        println!("{:<28} {:<14} {}", c.name, task_policy::describe(config, &c.name), ws.join(", "));
     }
-    let violations = layers::check(&crates);
     println!();
-    if violations.is_empty() {
-        println!("OK: {} crates, no layering violations.", crates.len());
+    if report.ok {
+        println!("OK: {} crates, no layering violations.", report.crates.len());
         Ok(())
     } else {
-        println!("{} violation(s):", violations.len());
-        for v in &violations {
+        println!("{} violation(s):", report.violations.len());
+        for v in &report.violations {
             println!("  - {v}");
         }
-        Err(format!("{} layering violation(s)", violations.len()))
+        Err(format!("{} layering violation(s)", report.violations.len()))
     }
+}
+
+fn cmd_pdf_deps(config: &craft_xtask::pdf_deps::Config, args: &[String]) -> Result<(), String> {
+    let _report = craft_xtask::pdf_deps::compute(config, &craft_xtask::pdf_deps::Args::parse(args)?)?;
+    println!("PDF backend: facade, Krilla and Hayro resolve once to {}", task_policy::PDF_REV);
+    Ok(())
+}
+
+fn cmd_parity(config: &craft_xtask::parity::Config, args: &[String]) -> Result<(), String> {
+    let args = craft_xtask::parity::Args::parse(args)?;
+    let report = craft_xtask::parity::compute(config, &args)?;
+    if !args.check {
+        craft_xtask::parity::apply(&report)?;
+    }
+    print!("{}", craft_xtask::parity::summary(&report.rows));
+    Ok(())
 }
 
 /// Workspace packages that must build for wasm32: all L0–L5 crates plus
 /// the egui shell.
 fn wasm_set() -> Result<Vec<String>, String> {
-    let crates = layers::from_metadata(&metadata()?)?;
+    let config = task_policy::configs(root()).layers;
+    let crates = craft_xtask::layers::from_metadata(&metadata()?)?;
     Ok(crates
         .into_iter()
-        .filter(|c| match layers::classify(&c.name) {
-            Some(layers::Class::Layer(l)) => l <= 5 || layers::short_name(&c.name) == "ui-egui",
-            Some(layers::Class::Standalone) => true,
-            _ => false,
+        .filter(|krate| {
+            matches!(task_policy::describe(&config, &krate.name).as_str(), "L0" | "L1" | "L2" | "L3" | "L4" | "L5")
+                || task_policy::short_name(&krate.name) == "ui-egui"
         })
         .map(|c| c.name)
         .collect())
@@ -212,7 +236,7 @@ fn cmd_ci() -> Result<(), String> {
                 run(c, "cargo fmt --all -- --check")
             }),
         ),
-        ("pdf-deps", Box::new(|| pdf_deps::run(&root()))),
+        ("pdf-deps", Box::new(|| cmd_pdf_deps(&task_policy::configs(root()).pdf_deps, &[]))),
         (
             "clippy",
             Box::new(|| {
@@ -225,7 +249,7 @@ fn cmd_ci() -> Result<(), String> {
         ("i18n-report", Box::new(cmd_i18n_report)),
         ("doctest", Box::new(cmd_doctest)),
         ("assets", Box::new(|| assets::run(&root()))),
-        ("layers", Box::new(cmd_layers)),
+        ("layers", Box::new(|| cmd_layers(&task_policy::configs(root()).layers, &[]))),
         ("wasm", Box::new(cmd_wasm)),
     ];
     let mut done = Vec::new();
