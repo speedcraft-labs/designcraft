@@ -109,12 +109,22 @@ fn script_export_of_the_document_in_the_running_app_saves_a_copy() {
         let mut asked = Vec::new();
         for line in BufReader::new(stream).lines() {
             let request: serde_json::Value = serde_json::from_str(&line.unwrap()).unwrap();
+            if request["method"] == "auth" {
+                assert_eq!(request["params"]["token"], "a".repeat(64));
+                writeln!(reply, r#"{{"ok":true,"result":{{"authenticated":true}}}}"#).unwrap();
+                continue;
+            }
             asked.push((request["params"]["command"].clone(), request["params"]["params"]["path"].clone()));
             writeln!(reply, r#"{{"ok": true, "result": {{}}}}"#).unwrap();
         }
         asked
     });
-    let out = cli().args(["script", "-", "--connect", &port, "--export", "copy.designcraft"]).output().unwrap();
+    let out = cli()
+        .env_remove("DESIGNCRAFT_CONTROL_TOKEN_FILE")
+        .env("DESIGNCRAFT_CONTROL_TOKEN", "a".repeat(64))
+        .args(["script", "-", "--connect", &port, "--export", "copy.designcraft"])
+        .output()
+        .unwrap();
     assert!(out.status.success(), "{}", String::from_utf8_lossy(&out.stderr));
     assert_eq!(app.join().unwrap(), [(serde_json::json!("file.saveACopy"), serde_json::json!("copy.designcraft"))]);
 }

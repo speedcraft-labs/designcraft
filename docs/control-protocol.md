@@ -1,6 +1,13 @@
 # Control protocol
 
-Start the app with `--control <port>` (or `DESIGNCRAFT_CONTROL_PORT`). The server listens on
+Start the app with `--control <port>` (or `DESIGNCRAFT_CONTROL_PORT`). Each launch generates a fresh
+256-bit control token, printed to stderr unless `DESIGNCRAFT_CONTROL_TOKEN_FILE` names a new file;
+the file is created without overwriting and with mode 0600 on Unix. Protect this token: it grants
+full control of the app, including access to files. Remove the token file before restarting.
+Clients must first send `{"id":0,"method":"auth","params":{"token":"<token>"}}` and wait for
+`{"id":0,"ok":true,"result":{"authenticated":true}}`; failed authentication closes the connection.
+Clients use `DESIGNCRAFT_CONTROL_TOKEN` or `DESIGNCRAFT_CONTROL_TOKEN_FILE` (not both).
+The server listens on
 `127.0.0.1` only and speaks JSON lines: one request object per line, one reply per line.
 
 For an isolated native test profile, set `DESIGNCRAFT_CONFIG_DIR` to a dedicated directory before
@@ -22,8 +29,8 @@ nothing sent after it on that connection runs. That covers text that isn't JSON,
 an object without `method`, invalid UTF-8, and a line longer than 4 MiB. An HTTP request (for example a
 web page's cross-origin `fetch` to `127.0.0.1:<port>`) therefore can't smuggle a command in its body:
 its request line is rejected first. At most 16 connections are served at once; further ones get an error
-line and are closed. Clients that get an error reply should reconnect. The port has no authentication,
-so only enable it while you use it. Transport: `apps/designcraft/src/control_server.rs`.
+line and are closed. Clients that get an error reply should reconnect and authenticate again.
+Transport: `apps/designcraft/src/control_server.rs`.
 
 ```json
 {"id": 1, "method": "engine.execute", "params": {"command": "frame.create", "params": {"rect": [36, 36, 300, 200], "content": "text"}}}

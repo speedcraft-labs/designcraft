@@ -1,6 +1,6 @@
 //! Where MCP tool calls end up: a control-channel method call.
 
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{TcpStream, ToSocketAddrs};
 use std::time::Duration;
 
@@ -28,12 +28,20 @@ pub struct Remote {
     addr: String,
     conn: Option<(BufReader<TcpStream>, TcpStream)>,
     next_id: u64,
+    token: Option<String>,
 }
 
 impl Remote {
     /// Connect to `addr` (`127.0.0.1:7979`), failing fast when nothing is listening.
     pub fn connect(addr: &str) -> std::io::Result<Self> {
-        let mut r = Self { addr: addr.to_string(), conn: None, next_id: 1 };
+        let mut r = Self { addr: addr.to_string(), conn: None, next_id: 1, token: None };
+        r.reconnect()?;
+        Ok(r)
+    }
+
+    /// Connect with an explicitly supplied control token.
+    pub fn connect_with_token(addr: &str, token: String) -> std::io::Result<Self> {
+        let mut r = Self { addr: addr.to_string(), conn: None, next_id: 1, token: Some(token) };
         r.reconnect()?;
         Ok(r)
     }
@@ -47,12 +55,28 @@ impl Remote {
         let mut last = std::io::Error::new(std::io::ErrorKind::NotFound, format!("cannot resolve {}", self.addr));
         for sa in self.addr.to_socket_addrs()? {
             match TcpStream::connect_timeout(&sa, Duration::from_millis(800)) {
-                Ok(s) => {
+                Ok(mut s) => {
                     s.set_nodelay(true).ok();
                     // The app answers within 60 s (its own timeout); leave headroom.
                     s.set_read_timeout(Some(Duration::from_secs(90))).ok();
+                    let token = match &self.token {
+                        Some(token) => token.clone(),
+                        None => crate::security::client_token()?,
+                    };
+                    writeln!(s, "{}", json!({"id": 0, "method": "auth", "params": {"token": token}}))?;
                     let read = s.try_clone()?;
-                    self.conn = Some((BufReader::new(read), s));
+                    let mut reader = BufReader::new(read);
+                    let mut line = Vec::new();
+                    if (&mut reader).take(1025).read_until(b'\n', &mut line)? == 0 || line.len() > 1024 {
+                        return Err(std::io::Error::other("invalid authentication reply"));
+                    }
+                    let reply: Value = serde_json::from_slice(&line).map_err(std::io::Error::other)?;
+                    if reply.get("ok").and_then(Value::as_bool) != Some(true)
+                        || reply.get("result").and_then(|value| value.get("authenticated")).and_then(Value::as_bool) != Some(true)
+                    {
+                        return Err(std::io::Error::other("authentication rejected"));
+                    }
+                    self.conn = Some((reader, s));
                     return Ok(());
                 }
                 Err(e) => last = e,
@@ -134,15 +158,24 @@ mod tests {
     use super::*;
     use std::net::TcpListener;
 
+    fn authenticate_fake(stream: &mut TcpStream, reader: &mut BufReader<TcpStream>) {
+        let mut line = String::new();
+        assert!(reader.read_line(&mut line).unwrap() > 0);
+        let request: Value = serde_json::from_str(&line).unwrap();
+        assert_eq!(request["method"], "auth");
+        assert_eq!(request["params"]["token"], "a".repeat(64));
+        writeln!(stream, "{}", json!({"ok": true, "result": {"authenticated": true}})).unwrap();
+    }
+
     fn closed_remote() -> (Remote, String) {
         let listener = TcpListener::bind("127.0.0.1:0").unwrap();
         let addr = listener.local_addr().unwrap().to_string();
-        let mut remote = Remote::connect(&addr).unwrap();
-        let (mut stream, _) = listener.accept().unwrap();
-        stream.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
-        stream.set_write_timeout(Some(Duration::from_secs(2))).unwrap();
         let server = std::thread::spawn(move || {
+            let (mut stream, _) = listener.accept().unwrap();
+            stream.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+            stream.set_write_timeout(Some(Duration::from_secs(2))).unwrap();
             let mut reader = BufReader::new(stream.try_clone().unwrap());
+            authenticate_fake(&mut stream, &mut reader);
             let mut line = String::new();
             assert!(reader.read_line(&mut line).unwrap() > 0);
             let request: Value = serde_json::from_str(&line).unwrap();
@@ -151,6 +184,7 @@ mod tests {
             stream.shutdown(std::net::Shutdown::Both).unwrap();
             drop(listener);
         });
+        let mut remote = Remote::connect_with_token(&addr, "a".repeat(64)).unwrap();
         assert_eq!(remote.call("document.inspect", json!({})), Ok(Value::Null));
         server.join().unwrap();
         let stream = &remote.conn.as_ref().unwrap().1;
@@ -184,6 +218,7 @@ mod tests {
             stream.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
             stream.set_write_timeout(Some(Duration::from_secs(2))).unwrap();
             let mut reader = BufReader::new(stream.try_clone().unwrap());
+            authenticate_fake(&mut stream, &mut reader);
             let mut applied = 0;
             loop {
                 let mut line = String::new();
@@ -233,9 +268,10 @@ mod tests {
         let addr = listener.local_addr().unwrap().to_string();
         let server = std::thread::spawn(move || {
             let first = {
-                let (stream, _) = listener.accept().unwrap();
+                let (mut stream, _) = listener.accept().unwrap();
                 stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
-                let mut reader = BufReader::new(stream);
+                let mut reader = BufReader::new(stream.try_clone().unwrap());
+                authenticate_fake(&mut stream, &mut reader);
                 let mut line = String::new();
                 assert!(reader.read_line(&mut line).unwrap() > 0);
                 let request: Value = serde_json::from_str(&line).unwrap();
@@ -248,6 +284,7 @@ mod tests {
             stream.set_read_timeout(Some(Duration::from_secs(5))).unwrap();
             stream.set_write_timeout(Some(Duration::from_secs(5))).unwrap();
             let mut reader = BufReader::new(stream.try_clone().unwrap());
+            authenticate_fake(&mut stream, &mut reader);
             loop {
                 let mut line = String::new();
                 assert!(reader.read_line(&mut line).unwrap() > 0);
@@ -262,7 +299,7 @@ mod tests {
                 }
             }
         });
-        let mut remote = Remote::connect(&addr).unwrap();
+        let mut remote = Remote::connect_with_token(&addr, "a".repeat(64)).unwrap();
 
         let result = remote.call("engine.execute", json!({"command": "frame.create", "params": {"rect": [0, 0, 100, 100]}}));
         let next = remote.call("document.inspect", json!({}));

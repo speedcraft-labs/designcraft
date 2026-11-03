@@ -43,9 +43,15 @@ After installation, register the CLI by name:
 claude mcp add designcraft -- designcraft-cli mcp
 
 # Drive the running desktop app (install/start the desktop app separately)
+export DESIGNCRAFT_CONTROL_TOKEN_FILE="$HOME/.designcraft-control-token"
 designcraft --control 7979
 claude mcp add designcraft-app -- designcraft-cli mcp --connect 7979
 ```
+
+The token file must not already exist and must be removed before restarting the app. On Unix it
+is created with mode 0600. Alternatively, omit the file variable and set `DESIGNCRAFT_CONTROL_TOKEN`
+to the token printed on the app's stderr for each connected CLI or MCP client. Both variables
+cannot be set together. The token grants full app control; keep it private.
 
 Other MCP clients use the same command line, e.g. in a JSON config:
 

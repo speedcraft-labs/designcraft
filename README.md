@@ -133,7 +133,8 @@ CRAFT_FONTS_DIR="$PWD/../craft-fonts" cargo run --release -p designcraft   # abs
 Without it, Japanese falls back to the system's fonts (none on the web). Release builds always
 include it.
 
-To drive a running app, send JSON lines to `127.0.0.1:7979`. The protocol is described in
+To drive a running app, authenticate with its per-launch token before sending JSON lines to
+`127.0.0.1:7979`. The protocol is described in
 [`docs/control-protocol.md`](docs/control-protocol.md).
 
 ### Logs

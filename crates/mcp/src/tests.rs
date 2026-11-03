@@ -404,6 +404,11 @@ fn fake_app() -> (String, std::sync::mpsc::Receiver<Value>) {
         for line in BufReader::new(stream).lines() {
             let Ok(line) = line else { break };
             let req: Value = serde_json::from_str(&line).unwrap();
+            if req["method"] == "auth" {
+                assert_eq!(req["params"]["token"], "a".repeat(64));
+                writeln!(out, "{}", json!({"id":req["id"],"ok":true,"result":{"authenticated":true}})).unwrap();
+                continue;
+            }
             let p = &req["params"];
             let reply = match req["method"].as_str().unwrap() {
                 "ui.screenshot" => {
@@ -427,7 +432,7 @@ fn fake_app() -> (String, std::sync::mpsc::Receiver<Value>) {
 #[test]
 fn connect_mode_forwards_to_the_app() {
     let (addr, seen) = fake_app();
-    let remote = Remote::connect(&addr).unwrap();
+    let remote = Remote::connect_with_token(&addr, "a".repeat(64)).unwrap();
     assert!(remote.has_ui());
     let mut s = Server::new(Box::new(remote));
     let r = call(&mut s, "screenshot", json!({}));

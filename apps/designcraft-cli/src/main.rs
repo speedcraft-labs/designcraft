@@ -8,7 +8,7 @@
 //! designcraft-cli describe ID          # one command: label, menu, shortcut, parameters
 //! designcraft-cli script [FILE|-] [--in FILE | --sample] [--connect PORT] [--save OUT] [--export OUT] [--keep-going]
 //!                                      # run a command script (crates/engine/src/script.rs): `$N.path` references
-//! designcraft-cli app [--port PORT] COMMAND [JSON]   # run a command in the running app (designcraft --control PORT)
+//! designcraft-cli app [--port PORT] COMMAND [JSON]   # requires DESIGNCRAFT_CONTROL_TOKEN or DESIGNCRAFT_CONTROL_TOKEN_FILE
 //! designcraft-cli app [--port PORT] --method METHOD [JSON]   # any control-channel method (ui.screenshot, ui.render, …)
 //! designcraft-cli mcp [--connect PORT] [--sample] [--automation-read-root DIR]... [--automation-write-root DIR]...
 //!                                      # MCP server over stdio (docs/mcp.md); the roots confine the files it reads and writes
