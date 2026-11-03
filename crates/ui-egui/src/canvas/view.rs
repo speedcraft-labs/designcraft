@@ -1,3 +1,5 @@
+use craft_view::{Anchor, ZoomPolicy};
+
 use super::{CanvasLayout, DRect, DVec2, DesignApp, Document, Point, Pos2, Rect, SpreadRef, Value, View, Xf};
 
 /// Fit the current spread (or page) in the canvas.
@@ -327,12 +329,10 @@ fn centre_spread(app: &mut DesignApp, delta: isize) {
 pub fn zoom_at(app: &mut DesignApp, screen: Pos2, factor: f64) {
     let Some(rect) = app.canvas_rect else { return };
     let Some(v) = app.view_mut() else { return };
-    let xf = Xf::new(rect, v);
-    let c = xf.to_canvas(screen);
-    let screen = xf.unrotate(screen);
-    let nz = (v.zoom * factor).clamp(0.05, 40.0);
-    v.zoom = nz;
-    v.origin = Point::new(c.x - (screen.x - rect.min.x) as f64 / nz, c.y - (screen.y - rect.min.y) as f64 / nz);
+    let mut xf = Xf::new(rect, v).inner;
+    xf.zoom_about(screen, v.zoom * factor, &ZoomPolicy { min: 0.05, max: 40.0, steps: &[], anchor: Anchor::Pointer });
+    let [x, y] = xf.origin();
+    (v.zoom, v.origin) = (xf.zoom, Point::new(x, y));
 }
 
 pub fn set_zoom(app: &mut DesignApp, z: f64) {
@@ -386,5 +386,80 @@ pub fn apply_view_request(app: &mut DesignApp, p: &Value) {
         let xf = Xf::new(rect, v);
         let s = xf.to_screen(c);
         zoom_at(app, s, p.get("factor").and_then(Value::as_f64).unwrap_or(2.0));
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use egui::{pos2, vec2};
+    struct OldXf {
+        min: Pos2,
+        origin: Point,
+        zoom: f64,
+        rot: u8,
+        pivot: Pos2,
+    }
+    fn quarter(p: Pos2, c: Pos2, q: u8) -> Pos2 {
+        let (dx, dy) = (p.x - c.x, p.y - c.y);
+        let (x, y) = match q % 4 {
+            0 => (dx, dy),
+            1 => (-dy, dx),
+            2 => (-dx, -dy),
+            _ => (dy, -dx),
+        };
+        pos2(c.x + x, c.y + y)
+    }
+    impl OldXf {
+        fn new(rect: Rect, v: &View) -> Self {
+            Self { min: rect.min, origin: v.origin, zoom: v.zoom, rot: v.rotation % 4, pivot: rect.center() }
+        }
+        fn to_screen(&self, p: Point) -> Pos2 {
+            let s = pos2(self.min.x + ((p.x - self.origin.x) * self.zoom) as f32, self.min.y + ((p.y - self.origin.y) * self.zoom) as f32);
+            if self.rot == 0 { s } else { quarter(s, self.pivot, self.rot) }
+        }
+        fn unrotate(&self, p: Pos2) -> Pos2 {
+            if self.rot == 0 { p } else { quarter(p, self.pivot, 4 - self.rot) }
+        }
+        fn to_canvas(&self, p: Pos2) -> Point {
+            let p = self.unrotate(p);
+            Point::new(self.origin.x + (p.x - self.min.x) as f64 / self.zoom, self.origin.y + (p.y - self.min.y) as f64 / self.zoom)
+        }
+    }
+    fn old_zoom_at(app: &mut DesignApp, screen: Pos2, factor: f64) {
+        let (Some(rect), Some(v)) = (app.canvas_rect, app.view_mut()) else { return };
+        let xf = OldXf::new(rect, v);
+        let (c, screen, nz) = (xf.to_canvas(screen), xf.unrotate(screen), (v.zoom * factor).clamp(0.05, 40.0));
+        (v.zoom, v.origin) = (nz, Point::new(c.x - (screen.x - rect.min.x) as f64 / nz, c.y - (screen.y - rect.min.y) as f64 / nz));
+    }
+    #[test]
+    fn craft_view_identity_2000_cases() {
+        let mut seed = 0x72_cafe_f00d_u64;
+        let mut next = |lo: f64, hi: f64| {
+            seed = seed.wrapping_mul(6364136223846793005).wrapping_add(1442695040888963407);
+            lo + (hi - lo) * ((seed >> 11) as f64 / ((1u64 << 53) as f64))
+        };
+        let mut app_a = DesignApp::new(designcraft_engine::Session::new(), crate::Services::default());
+        let mut app_b = DesignApp::new(designcraft_engine::Session::new(), crate::Services::default());
+        app_a.run("file.new", serde_json::json!({})).unwrap();
+        app_b.run("file.new", serde_json::json!({})).unwrap();
+        for i in 0..2000 {
+            let min = pos2(next(-3000.0, 3000.0).round() as f32, next(-3000.0, 3000.0).round() as f32);
+            let rect = Rect::from_min_size(min, vec2(next(1.0, 2000.0).round() as f32, next(1.0, 2000.0).round() as f32));
+            let v =
+                View { origin: Point::new(next(-1e5, 1e5), next(-1e5, 1e5)), zoom: next(0.05, 40.0), fitted: i % 2 == 0, rotation: (i % 4) as u8 };
+            let screen = pos2(next(-3000.0, 3000.0).round() as f32, next(-3000.0, 3000.0).round() as f32);
+            let (factor, pt) = (next(0.25, 4.0), Point::new(v.origin.x + next(-500.0, 500.0) / v.zoom, v.origin.y + next(-500.0, 500.0) / v.zoom));
+            let (old, new) = (OldXf::new(rect, &v), Xf::new(rect, &v));
+            let (ds, dc, oc) = (new.to_screen(pt) - old.to_screen(pt), new.to_canvas(screen), old.to_canvas(screen));
+            assert!(ds.x.abs() <= 1e-3 && ds.y.abs() <= 1e-3 && (dc.x - oc.x).abs() <= 1e-9 && (dc.y - oc.y).abs() <= 1e-9, "case {i}");
+            for a in [&mut app_a, &mut app_b] {
+                (a.canvas_rect, *a.view_mut().unwrap()) = (Some(rect), v);
+            }
+            old_zoom_at(&mut app_a, screen, factor);
+            zoom_at(&mut app_b, screen, factor);
+            let (va, vb) = (app_a.view().unwrap(), app_b.view().unwrap());
+            assert!(vb.zoom == va.zoom && (vb.origin.x - va.origin.x).abs() <= 1e-9 && (vb.origin.y - va.origin.y).abs() <= 1e-9, "case {i}");
+        }
     }
 }

@@ -19,6 +19,8 @@ craft-keymap = { git = "https://github.com/storytold/craft-libs", rev = "92d392c
 craft-prepress = { git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0", version = "=0.1.0", features = ["flatten"] }
 # craft-update: app-specific pretend versions apply to startup and manual checks.
 craft-update = { git = "https://github.com/storytold/craft-libs", version = "=0.1.0", rev = "c5a1cbfb5f9049f9270955caffb5bee5997aebf7", features = ["egui"] }
+# TODO: repoint to storytold/craft-libs after upstream merge
+craft-view = { git = "https://github.com/cloudbring/craft-libs", branch = "algo/integration" }
 # internal
 designcraft-geom = { path = "crates/geom" }
 designcraft-color = { path = "crates/color" }

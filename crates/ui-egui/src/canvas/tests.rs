@@ -872,7 +872,7 @@ fn selected_merged_owners_paint_the_same_row_and_column_targets() {
             let table = ft.tables.iter().find(|t| t.table == selected.table).unwrap();
             let (a, _) = item_canvas_xf(&st.doc, &layout, ft.frame).unwrap();
             let m = a * st.doc.text_xf(st.doc.item(ft.frame).unwrap());
-            let xf = Xf { min: pos2(0.0, 0.0), origin: Point::new(0.0, 0.0), zoom: 1.0, rot: 0, pivot: pos2(0.0, 0.0) };
+            let xf = Xf::new(Rect::ZERO, &View { zoom: 1.0, origin: Point::ZERO, ..View::default() });
             let owners = if merged {
                 [(0, 0), (1, 1)]
             } else if column {
@@ -952,7 +952,7 @@ fn a_selected_group_paints_both_ports_of_its_text_frame() {
     s.execute("selection.set", &json!({"ids": [g]})).unwrap();
     let doc = app.session.doc().unwrap().doc.clone();
     let layout = CanvasLayout::new(&doc, false);
-    let xf = Xf { min: pos2(0.0, 0.0), origin: Point::new(0.0, 0.0), zoom: 1.0, rot: 0, pivot: pos2(0.0, 0.0) };
+    let xf = Xf::new(Rect::ZERO, &View { zoom: 1.0, origin: Point::ZERO, ..View::default() });
     let ctx = egui::Context::default();
     let mut output = ctx.run_ui(egui::RawInput::default(), |ui| {
         draw_selection(&app, ui.painter(), &xf, &doc, &layout);

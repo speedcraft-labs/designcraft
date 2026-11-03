@@ -1,6 +1,7 @@
 //! The document canvas: pasteboard, spreads (rendered by `designcraft-render`), guides, frame edges,
 //! selection, text ports and threads, the text caret, rulers, and pointer/keyboard input.
 
+use craft_view::{Rotation, ViewXform};
 use designcraft_compose as compose;
 use designcraft_doc::{Content, Document, GuideSel, Item, SpreadRef};
 use designcraft_engine::doc::Selection;
@@ -72,25 +73,11 @@ pub const SCROLLBAR: f32 = 10.0;
 /// Canvas ↔ screen transform.
 #[derive(Clone, Copy, Debug)]
 pub struct Xf {
-    /// Top left of the (unrotated) view rectangle.
-    pub min: Pos2,
+    pub(super) inner: ViewXform,
     pub origin: Point,
     pub zoom: f64,
-    /// Quarter turns clockwise about `pivot` (the view centre).
+    /// Quarter turns clockwise about the view centre.
     pub rot: u8,
-    pub pivot: Pos2,
-}
-
-/// Rotate `p` by `q` quarter turns clockwise about `c` (screen space, y down).
-fn quarter(p: Pos2, c: Pos2, q: u8) -> Pos2 {
-    let (dx, dy) = (p.x - c.x, p.y - c.y);
-    let (x, y) = match q % 4 {
-        0 => (dx, dy),
-        1 => (-dy, dx),
-        2 => (-dx, -dy),
-        _ => (dy, -dx),
-    };
-    pos2(c.x + x, c.y + y)
 }
 
 /// The unrotated view rectangle for a screen rectangle and a rotation (width and height swap
@@ -101,34 +88,32 @@ pub fn view_rect(screen: Rect, rot: u8) -> Rect {
 
 impl Xf {
     pub fn new(rect: Rect, v: &View) -> Self {
-        Xf { min: rect.min, origin: v.origin, zoom: v.zoom, rot: v.rotation % 4, pivot: rect.center() }
+        let rot = v.rotation % 4;
+        let inner = ViewXform::from_origin(rect, [v.origin.x, v.origin.y], v.zoom, Rotation::quarter(rot), 1.0, 1.0);
+        Xf { inner, origin: v.origin, zoom: v.zoom, rot }
     }
     pub fn to_screen(&self, p: Point) -> Pos2 {
-        let s = pos2(self.min.x + ((p.x - self.origin.x) * self.zoom) as f32, self.min.y + ((p.y - self.origin.y) * self.zoom) as f32);
-        if self.rot == 0 { s } else { quarter(s, self.pivot, self.rot) }
-    }
-    /// A screen position in the unrotated view.
-    pub fn unrotate(&self, p: Pos2) -> Pos2 {
-        if self.rot == 0 { p } else { quarter(p, self.pivot, 4 - self.rot) }
+        self.inner.to_screen([p.x, p.y])
     }
     /// A screen-space movement in the unrotated view.
     pub fn unrotate_delta(&self, d: egui::Vec2) -> egui::Vec2 {
-        self.unrotate(self.pivot + d) - self.pivot
+        let [x, y] = ViewXform { zoom: 1.0, ..self.inner }.unmap_vec(d);
+        vec2(x as f32, y as f32)
     }
     pub fn to_canvas(&self, p: Pos2) -> Point {
-        let p = self.unrotate(p);
-        Point::new(self.origin.x + (p.x - self.min.x) as f64 / self.zoom, self.origin.y + (p.y - self.min.y) as f64 / self.zoom)
+        let [x, y] = self.inner.to_doc(p);
+        Point::new(x, y)
     }
     pub fn rect(&self, r: DRect) -> Rect {
         Rect::from_two_pos(self.to_screen(Point::new(r.x0, r.y0)), self.to_screen(Point::new(r.x1, r.y1)))
     }
     /// Canvas → screen affine (for vello rendering: pixels = points × ppp).
     pub fn affine(&self, ppp: f64, area_min: Pos2) -> Affine {
-        let unrotated = Affine::translate((self.min.x as f64, self.min.y as f64))
-            * Affine::scale(self.zoom)
-            * Affine::translate((-self.origin.x, -self.origin.y));
-        let (cx, cy) = (self.pivot.x as f64, self.pivot.y as f64);
-        let rot = Affine::translate((cx, cy)) * Affine::rotate(self.rot as f64 * std::f64::consts::FRAC_PI_2) * Affine::translate((-cx, -cy));
+        let (min, pivot) = (self.inner.rect.min, self.inner.rect.center());
+        let unrotated =
+            Affine::translate((min.x as f64, min.y as f64)) * Affine::scale(self.zoom) * Affine::translate((-self.origin.x, -self.origin.y));
+        let (cx, cy) = (pivot.x as f64, pivot.y as f64);
+        let rot = Affine::translate((cx, cy)) * Affine::rotate(self.inner.rotation) * Affine::translate((-cx, -cy));
         Affine::scale(ppp) * Affine::translate((-(area_min.x as f64), -(area_min.y as f64))) * rot * unrotated
     }
 }
