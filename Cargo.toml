@@ -15,6 +15,8 @@ repository = "https://github.com/storytold/designcraft"
 craft-pdf = { git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0", version = "=0.1.0", default-features = false }
 # Shared keyboard bindings: chords, overrides, conflicts, egui dispatch, the Keyboard Shortcuts dialog.
 craft-keymap = { git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0", version = "=0.1.0", features = ["egui", "ui"] }
+# TODO: repoint to storytold/craft-libs after upstream merge
+craft-view = { git = "https://github.com/cloudbring/craft-libs", branch = "algo/integration" }
 # Separations, ink coverage and the ink manager; same revision as craft-pdf and the krilla patch.
 craft-prepress = { git = "https://github.com/storytold/craft-libs", rev = "92d392cff132eaf53e13afff77f38b5c11b73aa0", version = "=0.1.0", features = ["flatten"] }
 # craft-update: app-specific pretend versions apply to startup and manual checks.

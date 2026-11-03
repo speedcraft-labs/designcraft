@@ -1,6 +1,7 @@
 //! The document canvas: pasteboard, spreads (rendered by `designcraft-render`), guides, frame edges,
 //! selection, text ports and threads, the text caret, rulers, and pointer/keyboard input.
 
+use craft_view::ViewXform;
 use designcraft_compose as compose;
 use designcraft_doc::{Content, Document, GuideSel, Item, SpreadRef};
 use designcraft_engine::doc::Selection;
@@ -104,8 +105,11 @@ impl Xf {
         Xf { min: rect.min, origin: v.origin, zoom: v.zoom, rot: v.rotation % 4, pivot: rect.center() }
     }
     pub fn to_screen(&self, p: Point) -> Pos2 {
-        let s = pos2(self.min.x + ((p.x - self.origin.x) * self.zoom) as f32, self.min.y + ((p.y - self.origin.y) * self.zoom) as f32);
+        let s = self.unrotated_xform().to_screen([p.x, p.y]);
         if self.rot == 0 { s } else { quarter(s, self.pivot, self.rot) }
+    }
+    fn unrotated_xform(&self) -> ViewXform {
+        ViewXform::new(Rect::from_min_max(self.min, self.min), [self.origin.x, self.origin.y], self.zoom, 1.0)
     }
     /// A screen position in the unrotated view.
     pub fn unrotate(&self, p: Pos2) -> Pos2 {
@@ -116,8 +120,8 @@ impl Xf {
         self.unrotate(self.pivot + d) - self.pivot
     }
     pub fn to_canvas(&self, p: Pos2) -> Point {
-        let p = self.unrotate(p);
-        Point::new(self.origin.x + (p.x - self.min.x) as f64 / self.zoom, self.origin.y + (p.y - self.min.y) as f64 / self.zoom)
+        let [canvas_x, canvas_y] = self.unrotated_xform().to_doc(self.unrotate(p));
+        Point::new(canvas_x, canvas_y)
     }
     pub fn rect(&self, r: DRect) -> Rect {
         Rect::from_two_pos(self.to_screen(Point::new(r.x0, r.y0)), self.to_screen(Point::new(r.x1, r.y1)))
@@ -455,3 +459,5 @@ mod guide_selection_tests;
 
 #[cfg(test)]
 mod tests;
+#[cfg(test)]
+mod view_identity;

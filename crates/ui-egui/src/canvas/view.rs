@@ -1,4 +1,7 @@
 use super::{CanvasLayout, DRect, DVec2, DesignApp, Document, Point, Pos2, Rect, SpreadRef, Value, View, Xf};
+use craft_view::{Anchor, ViewXform, ZoomPolicy};
+
+const ZOOM_POLICY: ZoomPolicy = ZoomPolicy { min: 0.05, max: 40.0, steps: &[], anchor: Anchor::Pointer };
 
 /// Fit the current spread (or page) in the canvas.
 pub fn fit(app: &mut DesignApp, rect: Rect, what: &str) {
@@ -328,11 +331,16 @@ pub fn zoom_at(app: &mut DesignApp, screen: Pos2, factor: f64) {
     let Some(rect) = app.canvas_rect else { return };
     let Some(v) = app.view_mut() else { return };
     let xf = Xf::new(rect, v);
-    let c = xf.to_canvas(screen);
-    let screen = xf.unrotate(screen);
-    let nz = (v.zoom * factor).clamp(0.05, 40.0);
-    v.zoom = nz;
-    v.origin = Point::new(c.x - (screen.x - rect.min.x) as f64 / nz, c.y - (screen.y - rect.min.y) as f64 / nz);
+    let anchor = xf.to_canvas(screen);
+    let half_width = f64::from(rect.width()) / 2.0;
+    let half_height = f64::from(rect.height()) / 2.0;
+    let centre = [v.origin.x + half_width / v.zoom, v.origin.y + half_height / v.zoom];
+    let mut transform = ViewXform::new(rect, centre, v.zoom, 1.0);
+    transform.rotation = f64::from(xf.rot) * std::f64::consts::FRAC_PI_2;
+    transform.zoom_about(screen, v.zoom * factor, &ZOOM_POLICY);
+    v.zoom = transform.zoom;
+    v.origin = Point::new(transform.centre[0] - half_width / v.zoom, transform.centre[1] - half_height / v.zoom);
+    v.origin += anchor - Xf::new(rect, v).to_canvas(screen);
 }
 
 pub fn set_zoom(app: &mut DesignApp, z: f64) {
