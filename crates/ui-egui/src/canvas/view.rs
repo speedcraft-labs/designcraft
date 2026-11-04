@@ -463,3 +463,6 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod oracle;

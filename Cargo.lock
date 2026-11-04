@@ -1638,6 +1638,7 @@ dependencies = [
  "egui",
  "egui_kittest",
  "log",
+ "proptest",
  "raw-window-handle",
  "serde",
  "serde_json",
