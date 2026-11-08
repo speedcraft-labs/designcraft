@@ -1342,8 +1342,12 @@ dependencies = [
  "designcraft-mcp",
  "designcraft-pdf",
  "designcraft-render",
+ "egui",
+ "egui-wgpu",
  "image",
+ "pollster 0.4.0",
  "serde_json",
+ "sha2",
 ]
 
 [[package]]

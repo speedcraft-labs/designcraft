@@ -44,10 +44,10 @@ use input::{press_count, release_clicks};
 #[cfg(test)]
 use page_decor::{MAX_BASELINES, baseline_grid_lines};
 use page_decor::{dashed, draw_flattener_preview, draw_guides, shown_area};
-use render::render_texture;
 pub use render::{DisplayKey, color_at};
 #[cfg(test)]
 use render::{c32, invalidate_on_display_change, screen_options};
+use render::{paint_drag_preview, render_texture};
 pub(crate) use rulers::fmt_tick;
 #[cfg(test)]
 use rulers::ruler_pieces;
@@ -267,8 +267,11 @@ pub fn show(app: &mut DesignApp, ui: &mut egui::Ui) {
         }
     }
     // Rendered content.
-    render_texture(app, ui.ctx(), rect, &xf, &layout, preview);
+    let drag_preview = render_texture(app, ui.ctx(), rect, &xf, &layout, preview);
     paint_render(app, &painter, &xf, &doc, &layout, screen, preview);
+    if let Some(drag_preview) = drag_preview {
+        paint_drag_preview(&painter, &xf, &layout, drag_preview);
+    }
     crate::separations::paint(app, ui.ctx(), &painter, &xf, &layout, screen);
     let hair = 1.0 / ui.ctx().pixels_per_point();
     for slot in &layout.slots {
@@ -448,6 +451,10 @@ struct Clicks {
 #[cfg(test)]
 #[path = "parent_canvas_tests.rs"]
 mod parent_canvas_tests;
+
+#[cfg(test)]
+#[path = "canvas_drag_preview_tests.rs"]
+mod canvas_drag_preview_tests;
 
 #[cfg(test)]
 #[path = "guide_selection_tests.rs"]

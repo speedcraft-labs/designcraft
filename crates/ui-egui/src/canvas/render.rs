@@ -1,4 +1,4 @@
-use super::{Affine, CanvasLayout, Color32, DRect, DesignApp, Point, Pos2, Rect, ScreenMode, Xf};
+use super::{Affine, CanvasLayout, Color32, DRect, DesignApp, Point, Pos2, Rect, ScreenMode, SpreadRef, Xf};
 
 pub(super) fn c32(c: [u8; 3]) -> Color32 {
     Color32::from_rgb(c[0], c[1], c[2])
@@ -123,9 +123,31 @@ pub(super) fn invalidate_on_display_change(app: &mut DesignApp) {
 /// Keep the canvas texture current. Panning inside the overscanned region just shifts the
 /// texture; zooming shows the old texture scaled until the background render arrives; document
 /// edits render synchronously so editing never lags.
-pub(super) fn render_texture(app: &mut DesignApp, ctx: &egui::Context, rect: Rect, xf: &Xf, layout: &CanvasLayout, preview: bool) {
+#[derive(Clone, Copy, Debug)]
+pub(super) struct DragPreview {
+    spread: SpreadRef,
+    original: DRect,
+    current: DRect,
+    paper: Color32,
+    fill: Color32,
+}
+
+pub(super) fn paint_drag_preview(painter: &egui::Painter, xf: &Xf, layout: &CanvasLayout, preview: DragPreview) {
+    let spread_xf = layout.xf(preview.spread);
+    painter.rect_filled(xf.rect(spread_xf.transform_rect_bbox(preview.original)), 0.0, preview.paper);
+    painter.rect_filled(xf.rect(spread_xf.transform_rect_bbox(preview.current)), 0.0, preview.fill);
+}
+
+pub(super) fn render_texture(
+    app: &mut DesignApp,
+    ctx: &egui::Context,
+    rect: Rect,
+    xf: &Xf,
+    layout: &CanvasLayout,
+    preview: bool,
+) -> Option<DragPreview> {
     invalidate_on_display_change(app);
-    let Some(st) = app.session.active() else { return };
+    let st = app.session.active()?;
     let ppp = ctx.pixels_per_point() as f64;
     let doc_key = (st.uid, std::sync::Arc::as_ptr(&st.doc) as u64, st.revision, preview);
     let editing_parents = st.editing_parents;
@@ -161,8 +183,11 @@ pub(super) fn render_texture(app: &mut DesignApp, ctx: &egui::Context, rect: Rec
         app.canvas.pending = None;
         app.perf.render_ms = done.ms;
     }
+    if let Some(drag) = drag_preview(app, ctx, rect, xf, layout, doc_key, preview) {
+        return Some(drag);
+    }
     if app.canvas.shown.is_some_and(|s| covers(&s)) {
-        return;
+        return None;
     }
     let doc_changed = app.canvas.shown.is_none_or(|s| s.doc != doc_key);
     let mode_changed = app.canvas.shown.is_some_and(|s| s.editing_parents != editing_parents);
@@ -189,13 +214,13 @@ pub(super) fn render_texture(app: &mut DesignApp, ctx: &egui::Context, rect: Rec
     let has_worker = false;
     // An edit with the view unchanged: repaint just the regions it changed.
     if doc_changed && zoom_same && patch_texture(app, layout, ppp, doc_key, preview) {
-        return;
+        return None;
     }
     // A mode switch changes every spread's meaning, even if the document has no damage.
     // Show the new canvas immediately, including when fitting it changes the zoom.
     if !has_worker || app.canvas.shown.is_none() || mode_changed || (doc_changed && zoom_same) {
         let t0 = crate::now_ms();
-        let Some((doc, placed, w, h, view, opts)) = job(app) else { return };
+        let (doc, placed, w, h, view, opts) = job(app)?;
         let img = app.canvas.renderer.render(&doc, &app.session.cache, &placed, (w, h), view, &opts);
         upload(app, ctx, img);
         app.canvas.shown = Some(target);
@@ -203,7 +228,7 @@ pub(super) fn render_texture(app: &mut DesignApp, ctx: &egui::Context, rect: Rec
         app.canvas.pending = None;
         app.canvas.pending_doc = None;
         app.perf.render_ms = crate::now_ms() - t0;
-        return;
+        return None;
     }
     #[cfg(not(target_arch = "wasm32"))]
     {
@@ -215,9 +240,9 @@ pub(super) fn render_texture(app: &mut DesignApp, ctx: &egui::Context, rect: Rec
                 x0 >= 0.0 && y0 >= 0.0 && x0 + rect.width() as f64 <= p.size.0 as f64 && y0 + rect.height() as f64 <= p.size.1 as f64
             }
         }) {
-            return;
+            return None;
         }
-        let Some((doc, placed, w, h, view, opts)) = job(app) else { return };
+        let (doc, placed, w, h, view, opts) = job(app)?;
         app.canvas.pending_doc = Some(doc.clone());
         app.canvas.token += 1;
         let token = app.canvas.token;
@@ -226,6 +251,199 @@ pub(super) fn render_texture(app: &mut DesignApp, ctx: &egui::Context, rect: Rec
         }
         app.canvas.pending = Some((token, target));
     }
+    None
+}
+
+/// A one-item move can skip CPU rasterising while its exact starting canvas texture is visible:
+/// mask the old bounds with paper and draw the new bounds through egui/wgpu. Any uncertainty uses
+/// the normal CPU damage patch below.
+pub(super) fn drag_preview(
+    app: &DesignApp,
+    ctx: &egui::Context,
+    rect: Rect,
+    xf: &Xf,
+    layout: &CanvasLayout,
+    doc_key: (u64, u64, u64, bool),
+    screen_preview: bool,
+) -> Option<DragPreview> {
+    if screen_preview
+        || app.ui.screen_mode != ScreenMode::Normal
+        || app.ui.proof_colors
+        || app.ui.overprint_preview
+        || app.ui.document_grid
+        || app.ui.separations.is_some()
+    {
+        return None;
+    }
+    let st = app.session.active()?;
+    if st.editing_parents {
+        return None;
+    }
+    let interaction = st.interaction.as_ref()?;
+    if interaction.preview.as_ref().map(|p| p.0.as_str()) != Some("transform.move") {
+        return None;
+    }
+    if doc_key != (st.uid, std::sync::Arc::as_ptr(&st.doc) as u64, st.revision, screen_preview) {
+        return None;
+    }
+    let [id] = interaction.selection.items.as_slice() else { return None };
+    if st.selection.items.as_slice() != [*id]
+        || !interaction.selection.anchors.is_empty()
+        || interaction.selection.content
+        || interaction.selection.text.is_some()
+        || interaction.selection.cells.is_some()
+        || st.selection.anchors != interaction.selection.anchors
+        || st.selection.content != interaction.selection.content
+        || st.selection.text != interaction.selection.text
+        || st.selection.cells != interaction.selection.cells
+        || std::sync::Arc::ptr_eq(&interaction.doc, &st.doc)
+    {
+        return None;
+    }
+    let shown = app.canvas.shown?;
+    let shown_doc = app.canvas.shown_doc.as_ref()?;
+    if !std::sync::Arc::ptr_eq(shown_doc, &interaction.doc)
+        || shown.doc != (st.uid, std::sync::Arc::as_ptr(&interaction.doc) as u64, interaction.revision, false)
+        || shown.editing_parents
+        || shown.doc.3
+        || shown.zoom.to_bits() != xf.zoom.to_bits()
+        || app.canvas.pending.is_some()
+    {
+        return None;
+    }
+    let ppp = ctx.pixels_per_point() as f64;
+    if !ppp.is_finite() || ppp <= 0.0 {
+        return None;
+    }
+    let (tw, th) = ((shown.size.0 as f64 * ppp).round() as i64, (shown.size.1 as f64 * ppp).round() as i64);
+    let full = [usize::try_from(tw).ok()?, usize::try_from(th).ok()?];
+    if app.canvas.texture.as_ref()?.size() != full {
+        return None;
+    }
+    let x0 = (xf.origin.x - shown.origin.x) * shown.zoom;
+    let y0 = (xf.origin.y - shown.origin.y) * shown.zoom;
+    if x0 < -0.5 || y0 < -0.5 || x0 + rect.width() as f64 > shown.size.0 as f64 + 0.5 || y0 + rect.height() as f64 > shown.size.1 as f64 + 0.5 {
+        return None;
+    }
+
+    let before = interaction.doc.as_ref();
+    let after = st.doc.as_ref();
+    let before_loc = before.find(*id)?;
+    if before_loc.path.len() != 1 || !matches!(before_loc.spread, SpreadRef::Doc(_)) {
+        return None;
+    }
+    layout.slot(before_loc.spread)?;
+    let after_loc = after.find(*id)?;
+    if after_loc != before_loc {
+        return None;
+    }
+    let before_item = before.item(*id)?;
+    let after_item = after.item(*id)?;
+    if !simple_solid_rectangle(before, before_item) || !simple_solid_rectangle(after, after_item) {
+        return None;
+    }
+    // Rich-black proof changes only the built-in black swatch. Its display color is pure black;
+    // custom CMYK swatches stay on the CPU path while rich-black mode is enabled.
+    if app.ui.rich_black && before_item.fill.swatch != designcraft_color::swatch::BLACK {
+        return None;
+    }
+    let old_layer = before.layer(before_item.layer)?;
+    let new_layer = after.layer(after_item.layer)?;
+    if !old_layer.visible || old_layer.locked || !new_layer.visible || new_layer.locked {
+        return None;
+    }
+    let mut expected = before_item.clone();
+    expected.xf = after_item.xf;
+    if expected != *after_item || before_item.xf.as_coeffs()[..4] != [1.0, 0.0, 0.0, 1.0] || after_item.xf.as_coeffs()[..4] != [1.0, 0.0, 0.0, 1.0] {
+        return None;
+    }
+    let spread = before.spread(before_loc.spread)?;
+    let current_spread = after.spread(after_loc.spread)?;
+    if spread.pages.len() != current_spread.pages.len() || spread.parent.is_some() {
+        return None;
+    }
+    let old_bounds = before_item.bounds();
+    let new_bounds = after_item.bounds();
+    let page = spread.pages.iter().find(|page| rect_contains(page.bounds(), old_bounds))?;
+    let page_id = page.id;
+    let new_page = current_spread.pages.iter().find(|candidate| candidate.id == page_id && rect_contains(candidate.bounds(), new_bounds))?;
+    if page.id != new_page.id || page.show_parent_overlay {
+        return None;
+    }
+    // Parent items are mapped through page-specific master transforms; only a blank visible
+    // parent is safe to mask without asking the normal renderer.
+    if page.show_parent_items
+        && let Some(parent_id) = page.parent
+        && before
+            .parents
+            .iter()
+            .find(|parent| parent.id == parent_id)
+            .is_none_or(|parent| parent.items.iter().any(|item| !item.hidden && before.layer(item.layer).is_none_or(|layer| layer.visible)))
+    {
+        return None;
+    }
+    let protected = old_bounds.union(new_bounds).inflate(1.0, 1.0);
+    for sibling in &spread.items {
+        if sibling.id == *id || sibling.hidden {
+            continue;
+        }
+        let layer = before.layer(sibling.layer)?;
+        if !layer.visible {
+            continue;
+        }
+        let bounds = sibling.bounds().inflate(
+            designcraft_render::effect_outset(sibling) + sibling.stroke.extent(),
+            designcraft_render::effect_outset(sibling) + sibling.stroke.extent(),
+        );
+        if rects_overlap(bounds, protected) {
+            return None;
+        }
+    }
+    let paper = before.resolve_color(designcraft_color::swatch::PAPER, 1.0)?.to_rgba8(1.0);
+    if paper[3] != u8::MAX {
+        return None;
+    }
+    if after.resolve_color(designcraft_color::swatch::PAPER, 1.0) != before.resolve_color(designcraft_color::swatch::PAPER, 1.0) {
+        return None;
+    }
+    let fill = before.resolve_color(&before_item.fill.swatch, before_item.fill.tint)?.to_rgba8(1.0);
+    Some(DragPreview {
+        spread: before_loc.spread,
+        original: old_bounds,
+        current: new_bounds,
+        paper: Color32::from_rgb(paper[0], paper[1], paper[2]),
+        fill: Color32::from_rgb(fill[0], fill[1], fill[2]),
+    })
+}
+
+fn simple_solid_rectangle(doc: &designcraft_doc::Document, item: &designcraft_doc::Item) -> bool {
+    use designcraft_doc::{Content, Shape};
+    item.shape == Shape::Rectangle
+        && matches!(item.content, Content::Unassigned)
+        && item.path == designcraft_geom::shapes::rectangle(item.inner_bounds())
+        && item.stroke.is_none()
+        && item.corners == Default::default()
+        && item.opacity == 1.0
+        && item.blend == designcraft_color::BlendMode::Normal
+        && item.effects == Default::default()
+        && item.wrap == Default::default()
+        && !item.hidden
+        && !item.locked
+        && !item.nonprinting
+        && item.fill.gradient_angle.is_none()
+        && item.fill.gradient_vector.is_none()
+        && !item.fill.overprint
+        && item.fill.tint.is_finite()
+        && !item.fill.is_none()
+        && doc.resolve_color(&item.fill.swatch, item.fill.tint).is_some_and(|color| color.to_rgba8(1.0)[3] == u8::MAX)
+}
+
+fn rect_contains(outer: DRect, inner: DRect) -> bool {
+    inner.x0 >= outer.x0 + 1.0 && inner.y0 >= outer.y0 + 1.0 && inner.x1 <= outer.x1 - 1.0 && inner.y1 <= outer.y1 - 1.0
+}
+
+fn rects_overlap(a: DRect, b: DRect) -> bool {
+    a.x0 < b.x1 && a.x1 > b.x0 && a.y0 < b.y1 && a.y1 > b.y0
 }
 
 /// Repaint only the damaged regions of the current texture after an edit (typing, nudging).

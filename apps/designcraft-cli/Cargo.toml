@@ -24,3 +24,9 @@ designcraft-pdf = { workspace = true }
 designcraft-mcp = { workspace = true }
 image = { workspace = true }
 serde_json = { workspace = true }
+
+[dev-dependencies]
+egui = { workspace = true }
+egui-wgpu = { git = "https://github.com/storytold/egui.git", rev = "6d518fc799681571963842f95b55a6b68431b15a" }
+pollster = "0.4"
+sha2 = "0.10"
