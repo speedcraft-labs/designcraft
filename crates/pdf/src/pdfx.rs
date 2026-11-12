@@ -4,6 +4,7 @@
 //! for.
 
 use std::collections::{HashMap, HashSet};
+use std::sync::LazyLock;
 
 use hayro_syntax::content::UntypedIter;
 use hayro_syntax::object::{Array, Dict, Name, Object, ObjectIdentifier, Stream};
@@ -17,6 +18,18 @@ use craft_pdf::write::print::{self, PrintColor};
 use crate::transitions::{find, int_after, object, rfind};
 
 mod fonts;
+
+/// Reuse Krilla's parsed and deflated copy of the built-in profile between exports.
+fn cached_fogra39_settings(intent: bool) -> krilla::SerializeSettings {
+    static BLENDING: LazyLock<krilla::SerializeSettings> = LazyLock::new(|| {
+        print::cmyk_blending(craft_cms::builtin::COATED_FOGRA39_ICC).expect("built-in FOGRA39 profile is valid")
+    });
+    static PDFX: LazyLock<krilla::SerializeSettings> = LazyLock::new(|| {
+        print::settings(PrintColor::fogra39(craft_cms::builtin::COATED_FOGRA39_ICC)).expect("built-in FOGRA39 profile is valid")
+    });
+
+    if intent { PDFX.clone() } else { BLENDING.clone() }
+}
 
 /// The serialization settings for CMYK print output: DeviceCMYK and CMYK blending groups in the
 /// document's CMYK working space (Coated FOGRA39 when it has none or its profile can't be
@@ -39,6 +52,14 @@ pub(crate) fn print_settings_with(cms: &designcraft_color::cms::Cms, intent: boo
         registry_name: registered.then_some("http://www.color.org"),
         info: Some(&space.condition),
     };
+    if color.profile == craft_cms::builtin::COATED_FOGRA39_ICC
+        && color.condition_identifier == "FOGRA39"
+        && color.condition == Some(craft_cms::builtin::COATED_FOGRA39_DESCRIPTION)
+        && color.registry_name == Some("http://www.color.org")
+        && color.info == Some(craft_cms::builtin::COATED_FOGRA39_DESCRIPTION)
+    {
+        return Ok((cached_fogra39_settings(intent), None));
+    }
     match write(color) {
         Ok(settings) => Ok((settings, None)),
         Err(WriteError::InvalidProfile) => {
