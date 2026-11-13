@@ -144,6 +144,8 @@ fn pointer_counts(p: &Value, drag: bool, pending: usize) -> Result<(u64, u64), S
 pub fn handle(app: &mut DesignApp, ctx: &egui::Context, req: &ControlRequest) -> Outcome {
     if req.method.starts_with("ui.") && req.method != "ui.focus" {
         // UI requests need a rendered pass, but must not activate the app for an agent.
+        #[cfg(target_os = "macos")]
+        ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(egui::viewport::WindowLevel::Normal));
         if let Some(raise_without_focus) = app.raise_without_focus {
             raise_without_focus();
             ctx.request_repaint();
@@ -414,6 +416,8 @@ fn handle_request(app: &mut DesignApp, ctx: &egui::Context, req: &ControlRequest
             ok(Value::Null)
         }
         "ui.focus" => {
+            #[cfg(target_os = "macos")]
+            ctx.send_viewport_cmd(egui::ViewportCommand::WindowLevel(egui::viewport::WindowLevel::Normal));
             ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
             ok(Value::Null)
         }
