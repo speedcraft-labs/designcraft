@@ -184,6 +184,8 @@ pub struct DesignApp {
     /// Story open in the Story Editor.
     pub story_editor: Option<story_editor::Target>,
     control_rx: Option<Receiver<ControlRequest>>,
+    /// Order the window forward for agent-driven UI requests without activating the app (macOS).
+    pub raise_without_focus: Option<fn() -> bool>,
     pending_shots: Vec<ShotRequest>,
     queued_shots: Vec<(u64, f64, u32)>,
     shot_token: u64,

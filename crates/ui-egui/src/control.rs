@@ -142,6 +142,13 @@ fn pointer_counts(p: &Value, drag: bool, pending: usize) -> Result<(u64, u64), S
 
 /// Handle one control request. Commands it runs leave the user's system clipboard alone.
 pub fn handle(app: &mut DesignApp, ctx: &egui::Context, req: &ControlRequest) -> Outcome {
+    if req.method.starts_with("ui.") && req.method != "ui.focus" {
+        // UI requests need a rendered pass, but must not activate the app for an agent.
+        if let Some(raise_without_focus) = app.raise_without_focus {
+            raise_without_focus();
+            ctx.request_repaint();
+        }
+    }
     app.install_clipboard_guard(ctx);
     let was = std::mem::replace(&mut app.in_control, true);
     let out = handle_request(app, ctx, req);
@@ -411,7 +418,7 @@ fn handle_request(app: &mut DesignApp, ctx: &egui::Context, req: &ControlRequest
             ok(Value::Null)
         }
         "ui.screenshot" => {
-            if p.get("focus").and_then(Value::as_bool).unwrap_or(true) {
+            if app.raise_without_focus.is_none() && p.get("focus").and_then(Value::as_bool).unwrap_or(true) {
                 ctx.send_viewport_cmd(egui::ViewportCommand::Focus);
             }
             ctx.request_repaint();
@@ -811,6 +818,47 @@ mod tests {
         Arc,
         atomic::{AtomicUsize, Ordering},
     };
+
+    static RAISES: AtomicUsize = AtomicUsize::new(0);
+
+    fn raise_without_focus() -> bool {
+        RAISES.fetch_add(1, Ordering::SeqCst);
+        true
+    }
+
+    #[test]
+    fn ui_requests_raise_without_focus_but_ui_focus_stays_explicit() {
+        use egui::{ViewportCommand, ViewportId};
+
+        let mut app = DesignApp::new(designcraft_engine::Session::new(), crate::Services::default());
+        app.raise_without_focus = Some(raise_without_focus);
+        let ctx = egui::Context::default();
+        RAISES.store(0, Ordering::SeqCst);
+
+        let (req, _) = ControlRequest::new("ui.inspect", json!({}));
+        let mut output = ctx.run_ui(Default::default(), |_| {
+            assert!(matches!(handle(&mut app, &ctx, &req), Outcome::Done(_)));
+        });
+        output.textures_delta.clear();
+        assert_eq!(RAISES.load(Ordering::SeqCst), 1);
+        assert!(!output.viewport_output[&ViewportId::ROOT].commands.iter().any(|c| matches!(c, ViewportCommand::Focus)));
+
+        let (req, _) = ControlRequest::new("ui.screenshot", json!({"focus": true}));
+        let mut output = ctx.run_ui(Default::default(), |_| {
+            assert!(matches!(handle(&mut app, &ctx, &req), Outcome::Screenshot { .. }));
+        });
+        output.textures_delta.clear();
+        assert_eq!(RAISES.load(Ordering::SeqCst), 2);
+        assert!(!output.viewport_output[&ViewportId::ROOT].commands.iter().any(|c| matches!(c, ViewportCommand::Focus)));
+
+        let (req, _) = ControlRequest::new("ui.focus", json!({}));
+        let mut output = ctx.run_ui(Default::default(), |_| {
+            assert!(matches!(handle(&mut app, &ctx, &req), Outcome::Done(_)));
+        });
+        output.textures_delta.clear();
+        assert_eq!(RAISES.load(Ordering::SeqCst), 2);
+        assert!(output.viewport_output[&ViewportId::ROOT].commands.iter().any(|c| matches!(c, ViewportCommand::Focus)));
+    }
 
     #[test]
     fn control_paste_never_reads_the_system_clipboard() {

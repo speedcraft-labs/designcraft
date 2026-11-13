@@ -72,6 +72,7 @@ impl DesignApp {
             clipboard_guard_installed: false,
             story_editor: None,
             control_rx: None,
+            raise_without_focus: None,
             pending_shots: vec![],
             queued_shots: vec![],
             shot_token: 0,
