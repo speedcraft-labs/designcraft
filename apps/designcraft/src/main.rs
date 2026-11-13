@@ -25,6 +25,8 @@ mod native_menu;
 mod pointer;
 mod profile;
 mod window_frame;
+#[cfg(target_os = "macos")]
+mod window_raise;
 
 use designcraft_engine::Session;
 use designcraft_ui_egui::{DesignApp, Services};
@@ -257,6 +259,21 @@ fn control_port_from(source: &str, value: Option<String>) -> Option<u16> {
     port
 }
 
+/// Driven by an agent (`--control`): don't activate the app on launch, so the user's keyboard
+/// focus stays where it is (macOS; winit activates ignoring other apps by default).
+#[cfg_attr(not(target_os = "macos"), allow(dead_code))]
+fn agent_event_loop(agent: bool) -> Option<eframe::EventLoopBuilderHook> {
+    #[cfg(target_os = "macos")]
+    if agent {
+        return Some(Box::new(|b| {
+            use winit::platform::macos::EventLoopBuilderExtMacOS;
+            b.with_activate_ignoring_other_apps(false);
+        }));
+    }
+    let _ = agent;
+    None
+}
+
 fn main() -> std::process::ExitCode {
     // Windows: the update helper is a copy of this program started with `--finish-update`.
     #[cfg(windows)]
@@ -285,6 +302,7 @@ fn main() -> std::process::ExitCode {
             },
         }
     }
+    let agent = control_port.is_some();
     // A portable.txt whose DesignCraftData folder cannot be written: the platform folders are used
     // instead (see `profile`), and the user is told, in the log and in the status bar.
     let portable_note = profile::unwritable_portable_dir().map(|dir| {
@@ -309,7 +327,9 @@ fn main() -> std::process::ExitCode {
             .with_drag_and_drop(true)
             .with_fullsize_content_view(true)
             .with_titlebar_shown(false)
-            .with_title_shown(false),
+            .with_title_shown(false)
+            // Started for an agent (`--control`): open without taking the user's keyboard focus.
+            .with_active(!agent),
         // DesignCraft's own FontDb supplies script-specific system fallbacks; egui's system-font
         // provider would put its discovery ahead of that order and change line metrics.
         system_font_fallback: false,
@@ -368,7 +388,10 @@ fn main() -> std::process::ExitCode {
     // ordinary CloseRequested events, preserving the same transactional Save/Don't Save flow.
     #[cfg(target_os = "macos")]
     {
-        options.event_loop_builder = Some(Box::new(|builder| {
+        options.event_loop_builder = Some(Box::new(move |builder| {
+            if let Some(hook) = agent_event_loop(agent) {
+                hook(&mut *builder);
+            }
             use winit::platform::macos::EventLoopBuilderExtMacOS;
             builder.with_close_requested_on_terminate(true);
         }));
@@ -424,6 +447,10 @@ fn main() -> std::process::ExitCode {
                 session.recovery_dir = profile::recovery_dir();
                 let recovered = session.execute("file.recovery.open", &serde_json::json!({})).ok();
                 let mut app = DesignApp::new(session, services());
+                #[cfg(target_os = "macos")]
+                if agent {
+                    app.raise_without_focus = Some(window_raise::raise_without_focus);
+                }
                 app.set_startup_update_check(true);
                 if let Some(line) = restarted.or_else(|| created.status_line()) {
                     app.status(line);
