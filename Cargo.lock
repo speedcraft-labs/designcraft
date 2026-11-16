@@ -1279,9 +1279,9 @@ dependencies = [
 [[package]]
 name = "craft-image-codecs"
 version = "0.1.0"
-source = "git+https://github.com/speedcraft-labs/craft-libs?rev=cc23ffd4d26f3074808e2187d332564817624f8f#cc23ffd4d26f3074808e2187d332564817624f8f"
+source = "git+https://github.com/storytold/craft-libs?rev=cc23ffd4d26f3074808e2187d332564817624f8f#cc23ffd4d26f3074808e2187d332564817624f8f"
 dependencies = [
- "craft-jpeg 0.1.0 (git+https://github.com/speedcraft-labs/craft-libs?rev=cc23ffd4d26f3074808e2187d332564817624f8f)",
+ "craft-jpeg 0.1.0 (git+https://github.com/storytold/craft-libs?rev=cc23ffd4d26f3074808e2187d332564817624f8f)",
  "exr",
  "flate2",
  "half",
@@ -1343,7 +1343,7 @@ dependencies = [
 [[package]]
 name = "craft-jpeg"
 version = "0.1.0"
-source = "git+https://github.com/speedcraft-labs/craft-libs?rev=cc23ffd4d26f3074808e2187d332564817624f8f#cc23ffd4d26f3074808e2187d332564817624f8f"
+source = "git+https://github.com/storytold/craft-libs?rev=cc23ffd4d26f3074808e2187d332564817624f8f#cc23ffd4d26f3074808e2187d332564817624f8f"
 dependencies = [
  "thiserror 2.0.21",
 ]
@@ -1541,10 +1541,10 @@ dependencies = [
 [[package]]
 name = "craft-svg"
 version = "0.1.0"
-source = "git+https://github.com/speedcraft-labs/craft-libs?rev=cc23ffd4d26f3074808e2187d332564817624f8f#cc23ffd4d26f3074808e2187d332564817624f8f"
+source = "git+https://github.com/storytold/craft-libs?rev=cc23ffd4d26f3074808e2187d332564817624f8f#cc23ffd4d26f3074808e2187d332564817624f8f"
 dependencies = [
- "craft-image-codecs 0.1.0 (git+https://github.com/speedcraft-labs/craft-libs?rev=cc23ffd4d26f3074808e2187d332564817624f8f)",
- "craft-xml 0.1.0 (git+https://github.com/speedcraft-labs/craft-libs?rev=cc23ffd4d26f3074808e2187d332564817624f8f)",
+ "craft-image-codecs 0.1.0 (git+https://github.com/storytold/craft-libs?rev=cc23ffd4d26f3074808e2187d332564817624f8f)",
+ "craft-xml 0.1.0 (git+https://github.com/storytold/craft-libs?rev=cc23ffd4d26f3074808e2187d332564817624f8f)",
  "flate2",
  "kurbo",
  "resvg 0.48.1",
@@ -1693,7 +1693,7 @@ dependencies = [
 [[package]]
 name = "craft-xml"
 version = "0.1.0"
-source = "git+https://github.com/speedcraft-labs/craft-libs?rev=cc23ffd4d26f3074808e2187d332564817624f8f#cc23ffd4d26f3074808e2187d332564817624f8f"
+source = "git+https://github.com/storytold/craft-libs?rev=cc23ffd4d26f3074808e2187d332564817624f8f#cc23ffd4d26f3074808e2187d332564817624f8f"
 dependencies = [
  "quick-xml 0.41.0",
  "thiserror 2.0.21",
@@ -1963,7 +1963,7 @@ dependencies = [
  "craft-mime",
  "craft-prepress",
  "craft-print",
- "craft-svg 0.1.0 (git+https://github.com/speedcraft-labs/craft-libs?rev=cc23ffd4d26f3074808e2187d332564817624f8f)",
+ "craft-svg 0.1.0 (git+https://github.com/storytold/craft-libs?rev=cc23ffd4d26f3074808e2187d332564817624f8f)",
  "craft-xml 0.1.0 (git+https://github.com/speedcraft-labs/craft-libs?rev=a5ac3aa05cf3ec013961a85599ddd9e0b5c03813)",
  "craft-xml 0.1.0 (git+https://github.com/speedcraft-labs/craft-libs?rev=e6a02334d33acee60909033154a1a43088399ea5)",
  "designcraft-color",
@@ -2049,7 +2049,7 @@ version = "0.21.0"
 dependencies = [
  "craft-file-formats",
  "craft-idml",
- "craft-svg 0.1.0 (git+https://github.com/speedcraft-labs/craft-libs?rev=cc23ffd4d26f3074808e2187d332564817624f8f)",
+ "craft-svg 0.1.0 (git+https://github.com/storytold/craft-libs?rev=cc23ffd4d26f3074808e2187d332564817624f8f)",
  "craft-xml 0.1.0 (git+https://github.com/speedcraft-labs/craft-libs?rev=e6a02334d33acee60909033154a1a43088399ea5)",
  "designcraft-color",
  "designcraft-compose",
@@ -2070,7 +2070,7 @@ dependencies = [
  "craft-file-formats",
  "craft-image-codecs 0.1.0 (git+https://github.com/speedcraft-labs/craft-libs?rev=e6a02334d33acee60909033154a1a43088399ea5)",
  "craft-psd",
- "craft-svg 0.1.0 (git+https://github.com/speedcraft-labs/craft-libs?rev=cc23ffd4d26f3074808e2187d332564817624f8f)",
+ "craft-svg 0.1.0 (git+https://github.com/storytold/craft-libs?rev=cc23ffd4d26f3074808e2187d332564817624f8f)",
  "designcraft-color",
  "designcraft-fonts",
  "flate2",
