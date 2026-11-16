@@ -20,7 +20,7 @@ craft-eps = { git = "https://github.com/speedcraft-labs/craft-libs", rev = "e6a0
 craft-epub = { git = "https://github.com/speedcraft-labs/craft-libs", rev = "e6a02334d33acee60909033154a1a43088399ea5", version = "=0.1.0" }
 craft-idml = { git = "https://github.com/speedcraft-labs/craft-libs", rev = "e6a02334d33acee60909033154a1a43088399ea5", version = "=0.1.0" }
 craft-indd = { git = "https://github.com/speedcraft-labs/craft-libs", rev = "e6a02334d33acee60909033154a1a43088399ea5", version = "=0.1.0" }
-craft-svg = { git = "https://github.com/speedcraft-labs/craft-libs", rev = "cc23ffd4d26f3074808e2187d332564817624f8f", version = "=0.1.0", features = ["tree-render", "tree-text"] }
+craft-svg = { git = "https://github.com/storytold/craft-libs", rev = "cc23ffd4d26f3074808e2187d332564817624f8f", version = "=0.1.0", features = ["tree-render", "tree-text"] }
 craft-xml = { git = "https://github.com/speedcraft-labs/craft-libs", rev = "e6a02334d33acee60909033154a1a43088399ea5", version = "=0.1.0" }
 craft-xml-dtd = { package = "craft-xml", git = "https://github.com/speedcraft-labs/craft-libs", rev = "a5ac3aa05cf3ec013961a85599ddd9e0b5c03813", version = "=0.1.0" }
 craft-rtf = { git = "https://github.com/speedcraft-labs/craft-libs", rev = "e6a02334d33acee60909033154a1a43088399ea5", version = "=0.1.0" }
