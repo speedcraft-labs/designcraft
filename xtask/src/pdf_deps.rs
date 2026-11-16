@@ -5,7 +5,10 @@ use std::process::Command;
 use serde_json::Value;
 
 const REPO: &str = "https://github.com/storytold/craft-libs";
-const REV: &str = "92d392cff132eaf53e13afff77f38b5c11b73aa0";
+const FORK_REPO: &str = "https://github.com/speedcraft-labs/craft-libs";
+const REPOS: &[&str] = &[REPO, FORK_REPO];
+const REV: &str = "a5ac3aa05cf3ec013961a85599ddd9e0b5c03813";
+const COMMIT: &str = "a5ac3aa05cf3ec013961a85599ddd9e0b5c03813";
 const PACKAGES: &[(&str, &str)] = &[
     ("craft-pdf", "0.1.0"),
     ("krilla", "0.8.2"),
@@ -34,14 +37,16 @@ pub fn run(root: &Path) -> Result<(), String> {
 
 fn validate(metadata: &Value) -> Result<(), String> {
     let packages = metadata.get("packages").and_then(Value::as_array).ok_or("cargo metadata has no packages")?;
-    let source = format!("git+{REPO}?rev={REV}#{REV}");
+    let sources: Vec<String> = REPOS.iter().map(|repo| format!("git+{repo}?rev={REV}#{COMMIT}")).collect();
     for (name, version) in PACKAGES {
         let matching: Vec<_> = packages.iter().filter(|p| p.get("name").and_then(Value::as_str) == Some(name)).collect();
         let [package] = matching.as_slice() else {
             return Err(format!("{name}: expected one resolved package, found {}", matching.len()));
         };
-        if package.get("version").and_then(Value::as_str) != Some(version) || package.get("source").and_then(Value::as_str) != Some(source.as_str()) {
-            return Err(format!("{name}: expected {version} from {source}; got {package}"));
+        if package.get("version").and_then(Value::as_str) != Some(version)
+            || !package.get("source").and_then(Value::as_str).is_some_and(|source| sources.iter().any(|expected| expected == source))
+        {
+            return Err(format!("{name}: expected {version} from one of {sources:?}; got {package}"));
         }
     }
     let nodes = metadata.pointer("/resolve/nodes").and_then(Value::as_array).ok_or("cargo metadata has no resolved nodes")?;
@@ -69,6 +74,11 @@ mod tests {
     #[test]
     fn accepts_one_pinned_facade_and_reader() {
         assert!(validate(&metadata()).is_ok());
+        let mut fork = metadata();
+        for package in fork["packages"].as_array_mut().unwrap() {
+            package["source"] = json!(format!("git+https://github.com/speedcraft-labs/craft-libs?rev={REV}#{COMMIT}"));
+        }
+        assert!(validate(&fork).is_ok());
     }
 
     #[test]
